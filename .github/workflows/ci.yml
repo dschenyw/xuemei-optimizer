@@ -1,0 +1,15 @@
+name: macOS source checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Source safety and version checks
+        run: ./scripts/check-source.sh
+      - name: Build app bundle
+        run: ./scripts/build-app.sh
