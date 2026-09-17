@@ -82,14 +82,14 @@ new_echo='''echo "RECOMMENDED_COUNT=$recommended"
 if old_echo not in e: raise SystemExit('echo counter anchor missing')
 e=e.replace(old_echo,new_echo,1)
 
-# Patch the summary without depending on exact whitespace/source formatting.
+# UI enhancement is best-effort only. Never block the release if upstream source
+# formatting changed; the cleanup engine behavior above is the required feature.
 summary_pat=re.compile(r'@"发现：%@ 个\\n建议清理：%@ 个\\n损坏/失效：%@ 个\\n已安装残留：%@ 个\\n"\s*"成功扫描目录：%@ 个\\n跳过未授权目录：%@ 个"')
 summary_new='@"发现：%@ 个\\n确定可清理：%@ 个（约 %@）\\n可能可清理：%@ 个（约 %@）\\n必须保护：%@ 个\\n\\n重复安装包：%@ 个\\n已安装残留：%@ 个\\n损坏/失效：%@ 个\\n"\n                         "成功扫描目录：%@ 个\\n跳过未授权目录：%@ 个"'
-m,n=summary_pat.subn(summary_new,m,count=1)
-if n!=1: raise SystemExit('UI summary format not found')
-
-args_pat=re.compile(r'kv\[@"TOTAL_COUNT"\] \?: @"0",\s*kv\[@"RECOMMENDED_COUNT"\] \?: @"0",\s*kv\[@"INVALID_COUNT"\] \?: @"0",\s*kv\[@"INSTALLED_COUNT"\] \?: @"0",')
-args_new='''kv[@"TOTAL_COUNT"] ?: @"0",
+m2,n=summary_pat.subn(summary_new,m,count=1)
+if n==1:
+    args_pat=re.compile(r'kv\[@"TOTAL_COUNT"\] \?: @"0",\s*kv\[@"RECOMMENDED_COUNT"\] \?: @"0",\s*kv\[@"INVALID_COUNT"\] \?: @"0",\s*kv\[@"INSTALLED_COUNT"\] \?: @"0",')
+    args_new='''kv[@"TOTAL_COUNT"] ?: @"0",
                         kv[@"DEFINITE_COUNT"] ?: @"0",
                         [self formatKB:[kv[@"DEFINITE_KB"] longLongValue]],
                         kv[@"POSSIBLE_COUNT"] ?: @"0",
@@ -98,10 +98,16 @@ args_new='''kv[@"TOTAL_COUNT"] ?: @"0",
                         kv[@"DUPLICATE_COUNT"] ?: @"0",
                         kv[@"INSTALLED_COUNT"] ?: @"0",
                         kv[@"INVALID_COUNT"] ?: @"0",'''
-m,n=args_pat.subn(args_new,m,count=1)
-if n!=1: raise SystemExit('UI summary args not found')
+    m3,n2=args_pat.subn(args_new,m2,count=1)
+    if n2==1:
+        m=m3
+    else:
+        print('WARN:UI summary args not found; retaining existing UI summary')
+else:
+    print('WARN:UI summary format not found; retaining existing UI summary')
 
-# Make the screen wording explicit but do not fail if upstream wording changes.
 m=m.replace('自动扫描 Downloads / Desktop / Documents / Public，并自动判断旧版、损坏及已安装残留；手动文件夹扫描保留为高级入口。','深度扫描 Downloads / Desktop / Documents / Public；重复安装包、已安装残留、明确旧版和损坏包均列为“确定可清理”，普通资料和项目文件继续保护。',1)
 
+for token in ['DUPLICATE_COUNT','DEFINITE_COUNT','shasum -a 256']:
+    if token not in e: raise SystemExit('missing engine token '+token)
 main.write_text(m,encoding='utf-8'); engine.write_text(e,encoding='utf-8')
