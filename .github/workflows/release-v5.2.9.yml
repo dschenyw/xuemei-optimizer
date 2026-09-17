@@ -1,0 +1,55 @@
+name: Build and publish Xuemei v5.2.9
+on:
+  push:
+    branches: [main]
+    paths: ['scripts/release_v529.py']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build-release:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download v5.2.8 base
+        run: |
+          set -euo pipefail
+          mkdir -p work/base
+          curl -fL --retry 3 'https://github.com/dschenyw/xuemei-optimizer/releases/download/v5.2.8/Xuemei-Optimizer-v5.2.8-Update.zip' -o work/base/base.zip
+          ditto -x -k work/base/base.zip work/base/extract
+          APP="$(find work/base/extract -maxdepth 3 -type d -name '雪梅优化.app' -print -quit)"
+          test -n "$APP"; echo "APP=$APP" >> "$GITHUB_ENV"
+      - name: Patch v5.2.9
+        run: |
+          set -euo pipefail
+          python3 scripts/release_v529.py "$APP"
+          /usr/libexec/PlistBuddy -c 'Set :CFBundleShortVersionString 5.2.9' "$APP/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Set :CFBundleVersion 5.2.9' "$APP/Contents/Info.plist" || true
+          grep -q 'XMCVersion = @"5.2.9"' "$APP/Contents/Resources/main.m"
+          grep -q '^VERSION="5.2.9"' "$APP/Contents/Resources/engine.sh"
+          grep -q 'XMC_APP_BACKUP_CLEANER_V1' "$APP/Contents/Resources/engine.sh"
+      - name: Compile sign verify
+        run: |
+          set -euo pipefail
+          SDK="$(xcrun --sdk macosx --show-sdk-path)"; CLANG="$(xcrun --find clang)"
+          "$CLANG" -fobjc-arc -fmodules -isysroot "$SDK" -mmacosx-version-min=12.0 -framework Cocoa "$APP/Contents/Resources/main.m" -o "$APP/Contents/MacOS/XueMeiCleanerNative"
+          chmod +x "$APP/Contents/MacOS/XueMeiCleanerNative" "$APP/Contents/Resources/engine.sh"
+          xattr -cr "$APP" || true; codesign --force --deep --sign - "$APP"; codesign --verify --deep --strict "$APP"
+      - name: Package
+        run: |
+          set -euo pipefail
+          mkdir -p dist; cp -R "$APP" 'dist/雪梅优化.app'
+          ditto -c -k --sequesterRsrc --keepParent 'dist/雪梅优化.app' 'dist/Xuemei-Optimizer-v5.2.9-Update.zip'
+          SHA="$(shasum -a 256 'dist/Xuemei-Optimizer-v5.2.9-Update.zip'|awk '{print $1}')"
+          printf '{\n  "version": "5.2.9",\n  "download_url": "https://github.com/dschenyw/xuemei-optimizer/releases/download/v5.2.9/Xuemei-Optimizer-v5.2.9-Update.zip",\n  "sha256": "%s"\n}\n' "$SHA" > dist/manifest.json
+      - name: Publish
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          set -euo pipefail
+          gh release view v5.2.9 >/dev/null 2>&1 && gh release delete v5.2.9 --yes --cleanup-tag || true
+          gh release create v5.2.9 dist/Xuemei-Optimizer-v5.2.9-Update.zip --title 'Xuemei Optimizer v5.2.9' --notes '应用管理新增历史 APP 备份安全识别与清理基础能力：仅明确 backup 命名且正式 APP 存在时进入候选，移入废纸篓。'
+      - name: Manifest
+        run: |
+          cp dist/manifest.json updates/manifest.json
+          git config user.name github-actions[bot]; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add updates/manifest.json; git commit -m 'Publish Xuemei Optimizer v5.2.9 manifest' && git push || true
