@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from pathlib import Path
 import re,sys
+# release-trigger: 2026-09-18
 if len(sys.argv)!=2: raise SystemExit('usage: release_v528.py APP')
 app=Path(sys.argv[1]); main=app/'Contents/Resources/main.m'; engine=app/'Contents/Resources/engine.sh'
 m=main.read_text(encoding='utf-8'); e=engine.read_text(encoding='utf-8')
