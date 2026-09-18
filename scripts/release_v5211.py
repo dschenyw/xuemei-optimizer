@@ -1,0 +1,16 @@
+#!/usr/bin/env python3
+from pathlib import Path
+import sys
+if len(sys.argv)!=2: raise SystemExit('usage: release_v5211.py APP')
+app=Path(sys.argv[1]); main=app/'Contents/Resources/main.m'; engine=app/'Contents/Resources/engine.sh'
+m=main.read_text(encoding='utf-8'); e=engine.read_text(encoding='utf-8')
+m=m.replace('static NSString * const XMCVersion = @"5.2.10";','static NSString * const XMCVersion = @"5.2.11";',1)
+e=e.replace('VERSION="5.2.10"','VERSION="5.2.11"',1)
+if 'XMCVersion = @"5.2.11"' not in m or 'VERSION="5.2.11"' not in e: raise SystemExit('version patch failed')
+guard='''\n# XMC_APP_BUNDLE_BOUNDARY_V1\nxmc_path_inside_app_bundle() {\n  local p="$1"\n  [[ "$p" == *.app/* || "$p" == *.app ]]\n}\n'''
+if 'XMC_APP_BUNDLE_BOUNDARY_V1' not in e: e += guard
+manager='''\n# XMC_OLD_APP_MANAGER_V2\nxmc_scan_old_apps() {\n  local out="$HOME/Library/Application Support/雪梅清理/old-app-candidates.tsv"\n  : > "$out"\n  local root p name live kb ver bid\n  for root in /Applications "$HOME/Applications"; do\n    [[ -d "$root" ]] || continue\n    for p in "$root"/*.backup.*.app(N) "$root"/*installed-retired*.app(N) "$root"/*_backup_*.app(N) "$root"/*.bak.*.app(N); do\n      [[ -d "$p" ]] || continue\n      [[ "$p" == "$APP_ROOT" ]] && continue\n      name="${p:t}"; live=""\n      case "$name" in\n        *.backup.*.app) live="$root/${name%%.backup.*}.app" ;;\n        *_backup_*.app) live="$root/${name%%_backup_*}.app" ;;\n        *.bak.*.app) live="$root/${name%%.bak.*}.app" ;;\n        *installed-retired*.app) live="$root/${name%%-installed-retired*}.app" ;;\n      esac\n      [[ -n "$live" && -d "$live" ]] || continue\n      bid=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$p/Contents/Info.plist" 2>/dev/null || true)\n      ver=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$p/Contents/Info.plist" 2>/dev/null || true)\n      kb=$(/usr/bin/du -sk "$p" 2>/dev/null | /usr/bin/awk '{print $1+0}')\n      print -r -- "确定可卸载\\t历史APP副本\\t${kb}\\t${ver}\\t${bid}\\t${p}" >> "$out"\n    done\n  done\n  echo "OLD_APP_COUNT=$(/usr/bin/awk 'END{print NR+0}' "$out")"\n  echo "OLD_APP_KB=$(/usr/bin/awk -F '\\t' '{s+=$3}END{print s+0}' "$out")"\n  echo "OLD_APP_RESULT=$out"\n}\nxmc_trash_old_apps() {\n  local f="$HOME/Library/Application Support/雪梅清理/old-app-candidates.tsv"\n  [[ -f "$f" ]] || xmc_scan_old_apps >/dev/null\n  local trash="$HOME/.Trash" p kb base dst n count=0 total=0\n  /bin/mkdir -p "$trash"\n  while IFS=$'\\t' read -r _ _ kb _ _ p; do\n    [[ -d "$p" ]] || continue\n    [[ "$p" == "$APP_ROOT" ]] && continue\n    case "$p" in /Applications/*.app|"$HOME/Applications/"*.app) ;; *) continue;; esac\n    base="${p:t}"; dst="$trash/$base"; n=1\n    while [[ -e "$dst" ]]; do dst="$trash/${base:r} ($n).app"; ((n++)); done\n    if /bin/mv "$p" "$dst" 2>/dev/null; then ((count++)); ((total+=kb)); fi\n  done < "$f"\n  echo "OLD_APP_REMOVED_COUNT=$count"\n  echo "OLD_APP_REMOVED_KB=$total"\n}\n'''
+if 'XMC_OLD_APP_MANAGER_V2' not in e: e += manager
+for required in ['PREBUILT_VERIFIED_ATOMIC_V1','PATH_PINNED_RESTART_V1','XMC_UPDATE_NOCACHE_V2','XMC_APP_BUNDLE_BOUNDARY_V1','XMC_OLD_APP_MANAGER_V2']:
+    if required not in e: raise SystemExit('missing '+required)
+main.write_text(m,encoding='utf-8'); engine.write_text(e,encoding='utf-8')
