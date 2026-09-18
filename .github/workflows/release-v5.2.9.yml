@@ -2,7 +2,7 @@ name: Build and publish Xuemei v5.2.10
 on:
   push:
     branches: [main]
-    paths: ['scripts/release_v5210.py']
+    paths: ['scripts/release_v5210.py', '.github/workflows/release-v5.2.9.yml']
   workflow_dispatch:
 permissions:
   contents: write
@@ -27,8 +27,7 @@ jobs:
           /usr/libexec/PlistBuddy -c 'Set :CFBundleVersion 5.2.10' "$APP/Contents/Info.plist" || true
           grep -q 'XMCVersion = @"5.2.10"' "$APP/Contents/Resources/main.m"
           grep -q '^VERSION="5.2.10"' "$APP/Contents/Resources/engine.sh"
-          grep -q 'XMC_UPDATE_NOCACHE_V1' "$APP/Contents/Resources/engine.sh"
-          grep -q 'XMC_MANIFEST_CACHE_BUSTER_V1' "$APP/Contents/Resources/engine.sh"
+          grep -q 'XMC_UPDATE_NOCACHE_V2' "$APP/Contents/Resources/engine.sh"
       - name: Compile sign verify
         run: |
           set -euo pipefail
@@ -48,7 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           gh release view v5.2.10 >/dev/null 2>&1 && gh release delete v5.2.10 --yes --cleanup-tag || true
-          gh release create v5.2.10 dist/Xuemei-Optimizer-v5.2.10-Update.zip --title 'Xuemei Optimizer v5.2.10' --notes '修复在线更新读取旧 manifest 缓存：HTTP no-cache 头 + manifest 时间戳 cache-buster。'
+          gh release create v5.2.10 dist/Xuemei-Optimizer-v5.2.10-Update.zip --title 'Xuemei Optimizer v5.2.10' --notes '修复在线更新读取旧 manifest 缓存：传输无关的 manifest cache-buster。'
       - name: Manifest
         run: |
           cp dist/manifest.json updates/manifest.json
