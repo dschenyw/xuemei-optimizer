@@ -1,0 +1,24 @@
+name: Validate v5.2.9 to v5.2.10 bridge
+on:
+  push:
+    branches: [main]
+    paths: ['scripts/bridge_v529_to_v5210.command']
+  workflow_dispatch:
+jobs:
+  validate:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax
+        run: zsh -n scripts/bridge_v529_to_v5210.command
+      - name: Verify published payload
+        run: |
+          set -euo pipefail
+          URL='https://github.com/dschenyw/xuemei-optimizer/releases/download/v5.2.10/Xuemei-Optimizer-v5.2.10-Update.zip'
+          curl -fL --retry 3 "$URL?validate=$(date +%s)" -o /tmp/v5210.zip
+          test "$(shasum -a 256 /tmp/v5210.zip|awk '{print $1}')" = '4f9c3b9d27593c978b5961f0eac572d17d6d4dd51be86dee8e154c3366926e44'
+          rm -rf /tmp/v5210x; mkdir /tmp/v5210x; ditto -x -k /tmp/v5210.zip /tmp/v5210x
+          APP="$(find /tmp/v5210x -maxdepth 3 -type d -name '雪梅优化.app' -print -quit)"
+          test -n "$APP"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")" = '5.2.10'
+          codesign --verify --deep --strict "$APP"
